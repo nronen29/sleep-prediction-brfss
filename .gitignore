@@ -1,0 +1,24 @@
+# Raw BRFSS data (1.1 GB, exceeds GitHub limits) — download from CDC
+LLCP2022XPT/
+LLCP2022XPT.zip
+LLCP2020XPT/
+codebook/*.zip
+*.XPT
+*.xpt
+data/
+
+# Course materials (lecture slides, instructions)
+*.pdf
+
+# Superseded proposal drafts
+Data_Science_Project_Proposal_Sleep.docx
+Data_Science_Proposal_Updated.docx
+
+# Office lock files
+~$*
+
+# Python / Jupyter
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+venv/

@@ -3,6 +3,8 @@
 Step-by-step plan for the notebook `sleep_prediction_brfss.ipynb`.
 Sources: the revised proposal (`Data_Science_Proposal_Final.docx`), the course instructions (`Final_project_instructions_1.pdf`) and the lecture slides in this folder.
 
+Each step ends with a **Results** block: what we got (numbers from the notebook output), the conclusion, decisions we made that were not in the plan, and what is important to remember for the report and the Q&A. It is updated after every step.
+
 ---
 
 ## The question
@@ -99,6 +101,15 @@ Imports all libraries, prints their versions and sets the random seed and file p
 - Set `RANDOM_STATE = 42` and the file paths.
 - Set the figure style once (for example `plt.rcParams["figure.dpi"] = 110`).
 
+#### Results — Step 0
+- **What we got:** pandas 3.0.6, numpy 2.5.4, scikit-learn 1.9.1, matplotlib 3.11.2, scipy 1.18.1. `RANDOM_STATE = 42`. `DATA_2022_PATH` and `DATA_2020_PATH` are defined once.
+- **Conclusion:** the environment is fixed and recorded, so the results can be reproduced.
+- **Decisions not in the plan:**
+  - seaborn is not imported. It was not in our list, and all plots use matplotlib.
+  - No global figure style was set.
+  - **A download cell was added after the setup cell.** It downloads the 2022 and 2020 files from the CDC if they are missing, because the files (about 1 GB each) are too large to submit and the notebook must run top to bottom on any computer. It reuses the paths from the setup cell.
+- **Important:** the notebook must use the `.venv` kernel (Python 3.14.5), where these packages are installed.
+
 ## Step 1 — Load the data
 
 > **Prompt:** "Load the BRFSS 2022 XPT file. It's over 1 GB and read_sas can't select columns, so read it in chunks and keep only the columns we need: the sleep question, the Group A and Group B variables, the state and the survey weight. Then check that we got 445,132 rows, that the raw file has 328 columns, and that none of our columns are missing."
@@ -117,6 +128,14 @@ Reads the BRFSS 2022 file in chunks and keeps only the columns we need, because 
   - All needed columns exist.
 - Lecture: Data Cleansing ("Removing unnecessary data").
 
+#### Results — Step 1
+- **What we got:** 445,132 rows (as expected), 328 columns in the raw file (as expected), 21 columns kept, none missing. Loading takes about 1 minute.
+- **Conclusion:** the file is complete and has the structure the CDC describes.
+- **Decisions not in the plan:** the column lists (`TARGET_COL`, `GROUP_A_COLS`, `GROUP_B_COLS`, `WEIGHT_COL`) are defined here and reused in all later steps. The cell stops with an error if the row or column counts are wrong.
+- **Important — found while loading:**
+  - `_DRNKWK2` shows 0 as `5.397605e-79`. This is a known problem when pandas reads SAS XPT files. It affects 188,832 rows and is fixed in Step 3.
+  - The file inside each CDC zip ends with a space (`"LLCP2022.XPT "`). The download cell handles this.
+
 ## Step 2 — Pipeline validation (validation only, not a finding)
 
 > **Prompt:** "Before we build any model, I want to check that our cleaning and weighting are correct. Load the BRFSS 2020 file, keep only the 50 states and DC, build the insufficient-sleep variable the same way as for 2022, and calculate the weighted percentage with the survey weight. Compare it to the CDC's published 32.7% (the crude number, not the age-adjusted 33.2%). Make it clear in the notebook that this is only a validation check, not a result."
@@ -134,6 +153,14 @@ Applies our target definition and survey weights to BRFSS 2020 and compares the 
 - Compare with the published **32.7%** (crude). Do **not** compare with 33.2%, which is age-adjusted.
 - Label it in the notebook: *"Validation of the cleaning and weighting pipeline, not a result."*
 - If the 2020 file is not available, say so in the notebook and skip this step. Do not invent a number.
+
+#### Results — Step 2
+- **What we got:** 51 states + DC kept. 390,193 respondents used (4,638 excluded: 77, 99 or missing). Unweighted 30.5%, **weighted 32.7%**, CDC published 32.7%. Difference: +0.02 percentage points.
+- **Conclusion:** our target definition and our use of the survey weight reproduce the CDC's published number. This supports the pipeline. It is a validation check, not a finding.
+- **Decisions not in the plan:** the function `make_insufficient_sleep()` is defined here and reused in Step 3, so 2020 and 2022 use exactly the same target definition.
+- **Important:**
+  - The weights matter: without them the result is 30.5%; with them it matches the CDC.
+  - The 2020 file has no U.S. Virgin Islands (code 78), only Guam and Puerto Rico.
 
 ## Step 3 — Cleaning and preprocessing (before the split)
 
@@ -179,6 +206,26 @@ Recode special codes to `NaN`. **Every code below must be checked against the BR
 - **Do not impute or encode here.** That happens inside the model pipeline, fitted on training data only (Step 5).
 - Lecture: Data Cleansing (missing values, encoding, outliers).
 
+#### Results — Step 3
+- **What we got:**
+  - Every code in the table above was checked against the 2022 codebook and applied. After cleaning, a check confirms that no invalid code is left.
+  - 5,453 people had no valid sleep answer and were dropped → **439,679 remain**.
+  - Regions: South 123,276, Midwest 114,570, West 110,175, Northeast 82,557, Territories 9,101.
+  - Missing values: income 21.3% (highest), heavy drinking and drinks per week 11.0%, BMI 10.8%, smoking 7.9%, all others under 2.5%. **33.8% of rows** have at least one missing feature.
+  - 71 fully identical rows (0.016%). Ignoring the survey weight, 605 rows are identical.
+- **Conclusion:** the data is clean and every feature is kept. Missing values will be filled after the split.
+- **Decisions (with reasons):**
+  - Keep all features: income (21.3%) is below the 40% drop-column rule and is a key structural variable.
+  - Do not drop rows with missing values: that would lose a third of the data and could bias the sample.
+  - Fill missing values after the split (most frequent / median), on training data only, to avoid leakage.
+  - Keep the 71 identical rows: there is no respondent ID, people can give the same answers, and they are too few to matter.
+  - `_STATE` is removed after mapping to `region`.
+- **Decisions not in the plan:**
+  - `_DRNKWK2`: tiny values → 0 with `round(2)`, then divided by 100 (the codebook confirms 0 = "did not drink" and 2 implied decimals).
+  - `GROUP_A_FEATURES`, `GROUP_B_FEATURES` and `NUMERIC_FEATURES` are defined here for the models.
+  - The "Cleaning decisions" table was removed from the notebook; the decisions are recorded here and must go into the report.
+- **Important:** `_IMPRACE` contains CDC-imputed values. This is not in the notebook yet and must be mentioned in the limitations.
+
 ## Step 4 — Exploratory data analysis
 
 > **Prompt:** "Now let's explore the data. Show what percent of people sleep less than 7 hours, both with and without the survey weights. Plot a histogram of sleep hours with a line at 7. Make bar charts of the insufficient-sleep rate by age, sex, income, education, race and region, and also by general health and depression. Check the numeric columns for values that look wrong, make a correlation heatmap, and run chi-square tests. Label the chi-square tests as exploratory only. Finally, tell me how balanced the two classes are."
@@ -199,6 +246,31 @@ Describes how common short sleep is and how it differs between groups, using tab
   - `scipy.stats.chi2_contingency` for each categorical feature vs. the target. Label it *"exploratory sample comparison, not survey-adjusted inference."*
 - Class balance: % of class 1. This decides the metric and threshold strategy (Imbalanced Data lecture).
 - Lectures: Lecture 3 (EDA, correlation), Data Cleansing (outliers).
+
+#### Results — Step 4
+- **What we got:**
+  - **Prevalence 2022:** 32.8% unweighted, **36.1% weighted**. This includes the 3 territories, and it is higher than 2020 (32.7%).
+  - **Sleep hours:** most people report 7 or 8 hours; 6 hours is the third most common answer.
+  - **Weighted short-sleep rate by group:**
+    - Age: peaks at 35–39 (42%), lowest at 80+ (24%).
+    - Sex: male 37%, female 35%.
+    - Income: 42% (<$15k) down to 30% ($200k+).
+    - Education: college graduates 31%, other groups 37–39%.
+    - Race: Black 46%, Other 46%, American Indian / Alaska Native 42%, Hispanic 36%, Asian 35%, White 33%.
+    - Region: 34–38%.
+    - General health: 29% (excellent) up to 54% (poor).
+    - Depression: 45% (yes) vs. 34% (no).
+  - **Numeric check:** health days stay within 0–30. Drinks per week: mean 3.05, max 532; 344 people report more than 100 a week, and 55.8% of them sleep less than 7 hours (vs. 32.7% of everyone else who answered).
+  - **Correlation with the target (all weak):** poor mental health days 0.18, general health 0.14, poor physical health days 0.12, age −0.10, income −0.08, education −0.08, BMI 0.07, drinks 0.01. Strongest between features: general health – physical health days 0.49, income – education 0.42.
+  - **Chi-square (exploratory only):** every p-value is tiny because of the large sample. Cramér's V: general health 0.144, employment 0.137, age 0.125, race 0.104, smoking 0.098, depression 0.092 … sex 0.008, heavy drinking 0.007.
+  - **Class balance:** 67.2% vs. 32.8% (about 2 to 1).
+- **Conclusion:** short sleep differs between groups, but every single association is weak, so we expect only modest prediction. Health variables (general health, depression, mental health days) show some of the larger differences, which suggests Group B may add information. The data is moderately imbalanced, so accuracy is not a useful metric. We focus on recall, F1, ROC-AUC and Average Precision, and tune the threshold.
+- **Decisions not in the plan:**
+  - Added **Cramér's V** next to the chi-square tests, because p-values are meaningless with ~440,000 people. It is not covered in the lectures, so it must be explained in the report.
+  - Readable category labels from the codebook in the charts.
+  - **Extreme drink values are kept** (team decision): they are real survey answers (7 days × up to 76 drinks), very few (344), carry signal (55.8% short sleep) and hardly affect the models.
+  - The EDA is split into 7 cells instead of one, so each chart has its own explanation.
+- **Important:** the weighted prevalence (36.1%) is a descriptive estimate. The models are unweighted.
 
 ---
 
@@ -235,6 +307,14 @@ X_train, X_val, y_train, y_val = train_test_split(
 - The test set is not used again until Step 9.
 - Lectures: KNN (stratify, random seed), Advanced Classification ("wrap preprocessing in a Pipeline"), Data Cleansing.
 
+#### Results — Step 5
+- **What we got:** train 263,807 rows (60%), validation 87,936 (20%), test 87,936 (20%). All three have 32.8% short sleepers. A check confirms that the sets do not share any respondent. After preprocessing: Group A 8 features → 51 model columns; Group B 19 features → 79 model columns; 0 missing values left.
+- **Conclusion:** both models use exactly the same people, the class balance is the same in every set, and the preprocessing leaves no missing values.
+- **Decisions not in the plan:**
+  - `make_preprocessor(features)` builds the preprocessing for either feature list, so Model 1 and Model 2 use identical steps.
+  - `OneHotEncoder(sparse_output=False)`: dense output, which Gradient Boosting needs.
+- **Important:** the test set has not been used since this step and must stay untouched until Step 9.
+
 ## Step 6 — Baseline
 
 > **Prompt:** "Add a simple baseline that always predicts 'sufficient sleep', the most common answer. Show its accuracy, precision, recall, F1, ROC-AUC and Average Precision on the validation set, and explain in one or two sentences why its accuracy looks good even though it never finds anyone who sleeps too little."
@@ -249,6 +329,12 @@ A model that always predicts "sufficient sleep", the most common answer. It show
 - Report on validation: accuracy, precision, recall, F1, ROC-AUC, Average Precision.
 - Expected: accuracy ≈ share of class 0, recall = 0, ROC-AUC = 0.5.
 - Lecture: Imbalanced Data ("Baseline first", the accuracy paradox).
+
+#### Results — Step 6
+- **What we got (validation set):** accuracy 0.672, precision 0.000, recall 0.000, F1 0.000, ROC-AUC 0.500, Average Precision 0.328.
+- **Conclusion:** the baseline's accuracy equals the share of people who sleep enough (67.2%), but it finds none of the short sleepers. This is the accuracy paradox from the Imbalanced Data lecture. A useful model must beat ROC-AUC 0.5 and Average Precision 0.328, and have recall above 0.
+- **Decisions not in the plan:** the function `evaluate()` is defined here and used for every model, so all models are measured the same way. Precision and F1 are set to 0 when a model never predicts class 1.
+- **Important:** Average Precision 0.328 is the lowest possible value for any model (it equals the share of short sleepers).
 
 ## Step 7 — Model 1: Group A (structural only)
 
@@ -279,6 +365,28 @@ Then, on the validation set:
 - Train vs. validation gap: check for overfitting (Decision Tree lecture).
 - Lectures: Advanced Classification (RF, GB, RandomizedSearchCV, ranges), Decision Tree (`class_weight`, `max_depth`), Imbalanced Data, Beyond Accuracy.
 
+#### Results — Step 7
+- **What we got (validation set; accuracy, precision, recall and F1 use the tuned threshold):**
+
+  | Algorithm | Threshold | Accuracy | Precision | Recall | F1 | ROC-AUC | Avg. Precision | Train AP | AP gap |
+  |---|---|---|---|---|---|---|---|---|---|
+  | Logistic Regression | 0.25 | 0.459 | 0.364 | 0.866 | 0.513 | 0.626 | 0.434 | 0.435 | 0.000 |
+  | Random Forest | 0.27 | 0.490 | 0.374 | 0.819 | 0.513 | 0.632 | 0.444 | 0.467 | 0.024 |
+  | Gradient Boosting | 0.41 | 0.479 | 0.371 | 0.839 | 0.514 | 0.633 | 0.444 | 0.449 | 0.005 |
+  | Baseline (always 0) | – | 0.672 | 0.000 | 0.000 | 0.000 | 0.500 | 0.328 | – | – |
+
+  Best settings: Logistic Regression `C=10, class_weight=None`; Random Forest `n_estimators=400, max_depth=14, max_features="log2", min_samples_leaf=20, class_weight=None`; Gradient Boosting `max_iter=200, max_depth=3, learning_rate=0.1, class_weight="balanced"`. Run time: about 14 minutes for this cell.
+- **Conclusion:** background variables alone carry real but modest signal: ROC-AUC about 0.63 and Average Precision about 0.44, vs. 0.50 and 0.33 for the baseline. This is within the 0.60–0.68 range the proposal expected. The three algorithms are almost tied, so more complex models add little over Logistic Regression. There is no meaningful overfitting (largest train–validation gap: 0.024, Random Forest).
+- **Decisions not in the plan:**
+  - **Tuning sample:** each search combination is trained on a fixed stratified sample of **50,000 training rows** (the same sample for Model 1 and Model 2), then the best one is retrained on all 263,807 training rows. Without it, tuning both models would take hours.
+  - **Gradient Boosting = `HistGradientBoostingClassifier`** with `early_stopping=False` (decision 1 below).
+  - Logistic Regression has only 8 possible combinations, so it tries all 8 instead of 20.
+  - Each algorithm runs through one function, `tune_models(features)`, so Model 2 uses exactly the same procedure.
+- **Important (for the report and Q&A):**
+  - Maximizing F1 gives **low thresholds (0.25–0.41)** → high recall (82–87%), low precision (about 37%), and accuracy below the baseline. Flagging everyone would give F1 ≈ 0.49, so the models' F1 (0.51) is only slightly better.
+  - Two best settings are at the edge of their ranges: Logistic Regression `C=10` (largest value) and Gradient Boosting's simplest option (200 rounds, depth 3). The lecture warns that the true best value may lie outside the range. Scores barely change between settings, so this is unlikely to matter, but it is worth a sentence in the discussion.
+  - These validation scores are slightly optimistic, because the threshold was chosen on the same validation set. The honest scores come from the test set in Step 9.
+
 ## Step 8 — Model 2: Group A + Group B (extended)
 
 > **Prompt:** "Now do exactly the same thing for Model 2, using Group A plus the Group B health and lifestyle variables. Keep everything else the same as in Model 1: the same three algorithms, the same parameter ranges, the same number of search tries, the same split and the same way of choosing the threshold. That way the only difference between the two models is the extra variables."
@@ -291,6 +399,33 @@ Repeats exactly the same procedure with the health and lifestyle variables added
 
 - Exactly the same as Step 7: same algorithms, search spaces, `n_iter`, split, threshold method.
 - Only the input columns change.
+
+#### Results — Step 8
+- **What we got (validation set; accuracy, precision, recall and F1 use the tuned threshold):**
+
+  | Algorithm | Threshold | Accuracy | Precision | Recall | F1 | ROC-AUC | Avg. Precision | Train AP | AP gap |
+  |---|---|---|---|---|---|---|---|---|---|
+  | Logistic Regression | 0.26 | 0.530 | 0.392 | 0.788 | 0.524 | 0.660 | 0.486 | 0.486 | 0.000 |
+  | Random Forest | 0.43 | 0.536 | 0.396 | 0.787 | 0.527 | 0.664 | 0.491 | 0.591 | 0.100 |
+  | Gradient Boosting | 0.41 | 0.531 | 0.394 | 0.799 | 0.528 | 0.667 | 0.495 | 0.501 | 0.006 |
+  | Baseline (always 0) | – | 0.672 | 0.000 | 0.000 | 0.000 | 0.500 | 0.328 | – | – |
+
+  **Model 2 vs. Model 1 (validation):**
+
+  | Algorithm | ROC-AUC M1 → M2 | Gain | AP M1 → M2 | Gain |
+  |---|---|---|---|---|
+  | Logistic Regression | 0.626 → 0.660 | +0.033 | 0.434 → 0.486 | +0.052 |
+  | Random Forest | 0.632 → 0.664 | +0.033 | 0.444 → 0.491 | +0.048 |
+  | Gradient Boosting | 0.633 → 0.667 | +0.033 | 0.444 → 0.495 | +0.051 |
+
+  Best settings: Logistic Regression `C=10, class_weight=None`; Random Forest `n_estimators=400, max_depth=14, max_features="sqrt", min_samples_leaf=5, class_weight="balanced"`; Gradient Boosting `max_iter=500, max_depth=3, learning_rate=0.05, class_weight="balanced"`. Run time: about 19 minutes for this cell; the whole notebook now takes about 39 minutes.
+- **Conclusion:** adding the health and lifestyle variables improves every algorithm by about the same amount: ROC-AUC +0.033 and Average Precision about +0.05. The gain is consistent but modest. Model 2 is still far from perfect (ROC-AUC about 0.66). The three algorithms remain almost tied, so the improvement comes from the added information, not from the choice of algorithm. These are validation results; the final answer comes from the test set (Step 9).
+- **Decisions not in the plan:** none. The cell calls the same `tune_models()` function as Model 1, so the procedure is identical. It also prints a first validation comparison of Model 2 vs. Model 1.
+- **Important (for the report and Q&A):**
+  - **Random Forest overfits more in Model 2:** train AP 0.591 vs. validation AP 0.491 (gap 0.100, vs. 0.024 in Model 1). Its best settings use small leaves (`min_samples_leaf=5`), so it memorizes more of the training data. Its validation score is still about the same as the other two, so it is not worse, but this should be mentioned. Logistic Regression and Gradient Boosting show almost no gap.
+  - Logistic Regression `C=10` is again at the edge of its range.
+  - Thresholds are still low (0.26–0.43), so recall stays high (79–80%) and precision low (about 39%), as in Model 1.
+  - Reverse causation: some Group B variables (for example poor mental health days) may partly be caused by poor sleep, so part of the gain may reflect that. This belongs in the discussion.
 
 ---
 
@@ -322,6 +457,9 @@ Evaluates all six models once on the untouched test set. The gap between Model 2
 - Report the result honestly, even if the gap is small.
 - Lecture: Beyond Accuracy (PR/ROC curves, AUC, PR curves for imbalanced data).
 
+#### Results — Step 9
+*To be added after this step.*
+
 ## Step 10 — Interpretation
 
 > **Prompt:** "Help us understand what the models learned. Show the Logistic Regression results as odds ratios, and explain that they show direction of association, not causes. Calculate permutation importance for all three Model 2 models on the test set, so we can see which variables matter most, and note that related variables share importance. Then check whether the models work equally well for different age groups, men and women, and income groups."
@@ -342,6 +480,9 @@ Shows which variables the models rely on (odds ratios and permutation importance
 - Optional: SHAP with `TreeExplainer` on the GB model (needs `pip install shap`).
 - Lectures: Explainable AI (permutation importance, SHAP), Linear Regression (coefficients).
 
+#### Results — Step 10
+*To be added after this step.*
+
 ## Step 11 — Clustering (optional, supplementary)
 
 > **Prompt:** "As an extra exploration, cluster people by their health and lifestyle answers using K-Means. Scale the data first, try 2 to 10 clusters, and choose the number with the elbow method and the silhouette score (on a sample, since the data is large). Then show the insufficient-sleep rate in each cluster and plot the clusters in 2D with PCA. Label this section as exploratory."
@@ -359,6 +500,9 @@ Groups people with similar health and lifestyle profiles and compares short-slee
 - Optional: `PCA(n_components=2)` scatter plot colored by cluster.
 - Label it *"exploratory, supplementary."*
 - Lectures: Unsupervised Learning and Clustering (K-Means, silhouette, elbow), Multidimensional Unsupervised Learning (scaling, PCA).
+
+#### Results — Step 11
+*To be added after this step.*
 
 ---
 
@@ -384,25 +528,13 @@ Explains what the results mean for our research question, whether our approach w
   - Splitting features into groups does not remove confounding.
 - What we would do differently, and what is still unknown.
 
-## Step 13 — AI usage statement
 
-> **Prompt:** "Update the AI usage section at the end of the notebook. Say which AI tools we used and what we used them for, like planning, writing code, debugging and drafting text, and list all the prompts we gave, in order."
-
-**In the notebook:**
-```markdown
-## 5. AI usage statement
-Lists the AI tools we used, what we used them for, and the prompts we gave, as required by the course.
-```
-
-- Tools used, what they were used for, and the prompts (required by the course instructions).
-
----
 
 ## Decisions to confirm before coding
 
-1. **Gradient Boosting class.** The lecture uses `GradientBoostingClassifier`. With ~270,000 training rows and 800 trees it is very slow. `HistGradientBoostingClassifier` is the same boosting idea, much faster, and handles NaN by itself. Recommended. We must explain it in the report.
-2. **Tuning method.** A single train/validation split (`PredefinedSplit`, as in the proposal) instead of 5-fold CV (as in the lecture). It is faster, and it matches the proposal's 60/20/20 split.
-3. **Missing income.** If `_INCOMG1` has many missing values, either impute it with the mode or keep "missing" as its own category. Decide after Step 3.
+1. **Gradient Boosting class.** Done: `HistGradientBoostingClassifier` is used (Step 7). The lecture uses `GradientBoostingClassifier`, which is very slow with ~260,000 training rows and 800 trees; the Hist version is the same boosting idea and much faster. We must explain it in the report.
+2. **Tuning method.** Done: a single train/validation split (`PredefinedSplit`, as in the proposal) instead of 5-fold CV (as in the lecture), with the search trained on a 50,000-row sample of the training set (Step 7).
+3. **Missing income.** Done: income (21.3% missing) is kept and filled with the most frequent value inside the pipeline, after the split (Steps 3 and 5).
 4. ~~**BRFSS 2020 file** for the validation step.~~ Done: downloaded by the notebook's Data cell.
 
 ## Methods not covered in the lectures (explain briefly in the report)
@@ -411,8 +543,9 @@ The instructions allow these if we explain the idea and why we chose them.
 
 - Logistic Regression. The lectures cover linear regression; LR appears only in the XAI code example.
 - Chi-square test (`chi2_contingency`).
+- Cramér's V (strength of association next to the chi-square test, Step 4).
 - Average Precision as a single number for the PR curve. The PR curve itself is covered.
-- `HistGradientBoostingClassifier`, if chosen.
+- `HistGradientBoostingClassifier` (used, Step 7).
 - Bootstrap confidence interval, if used.
 
 ## Submission checklist (from the course instructions)

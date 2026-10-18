@@ -458,7 +458,38 @@ Evaluates all six models once on the untouched test set. The gap between Model 2
 - Lecture: Beyond Accuracy (PR/ROC curves, AUC, PR curves for imbalanced data).
 
 #### Results — Step 9
-*To be added after this step.*
+- **What we got (TEST set, used once; accuracy, precision, recall and F1 use the thresholds chosen on validation):**
+
+  | Algorithm | Model | Threshold | Accuracy | Precision | Recall | F1 | ROC-AUC | Avg. Precision |
+  |---|---|---|---|---|---|---|---|---|
+  | Logistic Regression | 1 | 0.25 | 0.456 | 0.362 | 0.862 | 0.510 | 0.625 | 0.435 |
+  | Logistic Regression | 2 | 0.26 | 0.531 | 0.393 | 0.789 | 0.525 | 0.660 | 0.488 |
+  | Random Forest | 1 | 0.27 | 0.490 | 0.374 | 0.816 | 0.513 | 0.632 | 0.446 |
+  | Random Forest | 2 | 0.43 | 0.537 | 0.397 | 0.788 | 0.528 | 0.666 | 0.494 |
+  | Gradient Boosting | 1 | 0.41 | 0.478 | 0.370 | 0.839 | 0.514 | 0.633 | 0.446 |
+  | Gradient Boosting | 2 | 0.41 | 0.531 | 0.394 | 0.801 | 0.529 | 0.667 | 0.496 |
+  | Baseline (always 0) | – | – | 0.672 | 0.000 | 0.000 | 0.000 | 0.500 | 0.328 |
+
+  **Main result — gain from Model 1 to Model 2 (test):**
+
+  | Algorithm | ROC-AUC gain | AP gain | F1 gain | Recall change | Precision gain |
+  |---|---|---|---|---|---|
+  | Logistic Regression | +0.034 | +0.053 | +0.014 | −0.074 | +0.031 |
+  | Random Forest | +0.034 | +0.048 | +0.015 | −0.028 | +0.023 |
+  | Gradient Boosting | +0.034 | +0.050 | +0.015 | −0.038 | +0.024 |
+
+  Confusion matrix example (Model 2, Gradient Boosting): finds 23,135 of 28,880 short sleepers (5,745 missed) and flags 35,521 of 59,056 people who sleep enough. The notebook also shows ROC and precision–recall curves; Model 2's curve is above Model 1's for every algorithm.
+- **Conclusion (answer to the research question):** structural characteristics alone predict insufficient sleep only modestly (ROC-AUC about 0.63, Average Precision about 0.44, vs. 0.50 and 0.33 for the baseline). Adding the health and lifestyle variables gives a **consistent but modest** improvement with all three algorithms: ROC-AUC +0.034 and Average Precision about +0.05. Even Model 2 reaches only about 0.66 ROC-AUC. Because the three algorithms are almost tied, the improvement comes from the added information, not from the algorithm.
+- **Decisions not in the plan:**
+  - The optional bootstrap confidence interval for the gap was not done (not requested). The gain is the same for all three algorithms and the test set has 87,936 people, but there is no formal uncertainty estimate.
+  - In this scikit-learn version, line colors in the ROC and precision–recall plots are set with `curve_kwargs` (the first run failed with `color=` and was fixed).
+  - A short markdown summary of the test results was added under the plots.
+- **Important (for the report and Q&A):**
+  - **Test matches validation:** all ROC-AUC and Average Precision values are within 0.003 of the validation results, so the choices made on the validation set were not over-fitted.
+  - **Compare with ROC-AUC and Average Precision**, not accuracy, recall or F1: each model has its own threshold, so recall drops in Model 2 while precision, accuracy and F1 rise.
+  - With F1-based thresholds every model flags many people (many false positives). In a real screening use, the threshold would depend on the cost of each type of error.
+  - Reverse causation: part of the gain may come from health answers that are partly caused by poor sleep.
+  - Running the whole notebook now takes about 31–39 minutes.
 
 ## Step 10 — Interpretation
 

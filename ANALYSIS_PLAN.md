@@ -165,7 +165,7 @@ Recode special codes to `NaN`. **Every code below must be checked against the BR
 | `_TOTINDA` | 1, 2 | 9 | — | binary |
 | `_SMOKER3` | 1–4 | 9 | — | categorical |
 | `_RFDRHV8` | 1, 2 | 9 | — | binary |
-| `_DRNKWK2` | 0–98999 | 99900 | divide by 100 (2 implied decimals) | numeric |
+| `_DRNKWK2` | 0–98999 | 99900 | **tiny values (~5.4e-79) → 0** (SAS XPT read artifact; 188,832 rows in the loaded data); divide by 100 (2 implied decimals) | numeric |
 | `DIABETE4` | 1–4 | 7, 9 | — | categorical |
 | `ASTHMA3` | 1, 2 | 7, 9 | — | binary |
 | `ADDEPEV3` | 1, 2 | 7, 9 | — | binary |
